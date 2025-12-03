@@ -1,0 +1,70 @@
+---
+# Install Cursor extensions
+- name: Check if Cursor application is installed.
+  stat:
+    path: "/Applications/Cursor.app"
+  register: cursor_app_check
+  when: cursor_extensions is defined and cursor_extensions | length > 0
+
+- name: Check if Cursor CLI is available.
+  command: which cursor
+  register: cursor_cli_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: cursor_extensions is defined and cursor_extensions | length > 0
+
+- name: Ensure Cursor CLI is set up (create symlink if app exists but CLI is missing).
+  file:
+    src: "/Applications/Cursor.app/Contents/Resources/app/bin/cursor"
+    dest: "/usr/local/bin/cursor"
+    state: link
+    mode: '0755'
+  when:
+    - cursor_app_check.stat.exists
+    - cursor_cli_check.rc != 0
+    - cursor_extensions is defined
+    - cursor_extensions | length > 0
+
+- name: Re-check Cursor CLI after setup.
+  command: which cursor
+  register: cursor_cli_check_after
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - cursor_app_check.stat.exists
+    - cursor_cli_check.rc != 0
+    - cursor_extensions is defined
+    - cursor_extensions | length > 0
+
+- name: Ensure Cursor extensions are installed.
+  command: cursor --install-extension {{ item }} --force
+  loop: "{{ cursor_extensions | default([]) }}"
+  when:
+    - (cursor_cli_check.rc == 0) or (cursor_cli_check_after.rc == 0)
+    - cursor_extensions is defined
+    - cursor_extensions | length > 0
+  register: cursor_extension_install
+  changed_when: "'already installed' not in cursor_extension_install.stdout"
+  failed_when: false
+  check_mode: false
+
+- name: Display error if Cursor is not installed.
+  fail:
+    msg: "Cursor is not installed. Please install it via Homebrew (brew install --cask cursor) or manually before installing extensions."
+  when:
+    - not cursor_app_check.stat.exists
+    - cursor_extensions is defined
+    - cursor_extensions | length > 0
+
+- name: Display warning if Cursor CLI cannot be set up.
+  debug:
+    msg: "Cursor CLI (cursor command) is not available and could not be set up automatically. Please run 'cursor' from Cursor (Cmd+Shift+P -> 'Shell Command: Install cursor command in PATH') or ensure /usr/local/bin is in your PATH."
+  when:
+    - cursor_app_check.stat.exists
+    - cursor_cli_check.rc != 0
+    - cursor_cli_check_after.rc != 0
+    - cursor_extensions is defined
+    - cursor_extensions | length > 0
+

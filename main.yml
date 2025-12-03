@@ -46,6 +46,14 @@
       when: configure_sublime
       tags: ['sublime-text']
 
+    - import_tasks: tasks/vscode-extensions.yml
+      when: configure_vscode
+      tags: ['vscode']
+
+    - import_tasks: tasks/cursor-extensions.yml
+      when: configure_cursor
+      tags: ['cursor']
+
     - name: Run post-provision task files in a block.
       tags: ['post']
       block:

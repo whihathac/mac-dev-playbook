@@ -1,0 +1,70 @@
+---
+# Install VS Code extensions
+- name: Check if VS Code application is installed.
+  stat:
+    path: "/Applications/Visual Studio Code.app"
+  register: vscode_app_check
+  when: vscode_extensions is defined and vscode_extensions | length > 0
+
+- name: Check if VS Code CLI is available.
+  command: which code
+  register: vscode_cli_check
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when: vscode_extensions is defined and vscode_extensions | length > 0
+
+- name: Ensure VS Code CLI is set up (create symlink if app exists but CLI is missing).
+  file:
+    src: "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+    dest: "/usr/local/bin/code"
+    state: link
+    mode: '0755'
+  when:
+    - vscode_app_check.stat.exists
+    - vscode_cli_check.rc != 0
+    - vscode_extensions is defined
+    - vscode_extensions | length > 0
+
+- name: Re-check VS Code CLI after setup.
+  command: which code
+  register: vscode_cli_check_after
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  when:
+    - vscode_app_check.stat.exists
+    - vscode_cli_check.rc != 0
+    - vscode_extensions is defined
+    - vscode_extensions | length > 0
+
+- name: Ensure VS Code extensions are installed.
+  command: code --install-extension {{ item }} --force
+  loop: "{{ vscode_extensions | default([]) }}"
+  when:
+    - (vscode_cli_check.rc == 0) or (vscode_cli_check_after.rc == 0)
+    - vscode_extensions is defined
+    - vscode_extensions | length > 0
+  register: vscode_extension_install
+  changed_when: "'already installed' not in vscode_extension_install.stdout"
+  failed_when: false
+  check_mode: false
+
+- name: Display error if VS Code is not installed.
+  fail:
+    msg: "VS Code is not installed. Please install it via Homebrew (brew install --cask visual-studio-code) or manually before installing extensions."
+  when:
+    - not vscode_app_check.stat.exists
+    - vscode_extensions is defined
+    - vscode_extensions | length > 0
+
+- name: Display warning if VS Code CLI cannot be set up.
+  debug:
+    msg: "VS Code CLI (code command) is not available and could not be set up automatically. Please run 'code' from VS Code (Cmd+Shift+P -> 'Shell Command: Install code command in PATH') or ensure /usr/local/bin is in your PATH."
+  when:
+    - vscode_app_check.stat.exists
+    - vscode_cli_check.rc != 0
+    - vscode_cli_check_after.rc != 0
+    - vscode_extensions is defined
+    - vscode_extensions | length > 0
+
